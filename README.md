@@ -16,6 +16,22 @@ Load `releases/raycaster-gba-instant.gba` in a GBA emulator (verified in RetroAr
 
 Reach the clearing at the far end of the maze for the exit screen.
 
+## Finding the exit (read this first, it will save your sanity)
+
+The exit is deliberately, unfairly hidden in this prototype, and it is the same maze in the GBA and GBC versions:
+
+- The exit tile is at (10,10), at the far end of the maze, and you can only step onto it from the north, from (10,9) heading south.
+- It looks exactly like a normal corn wall. It does not look different, it does not glow, and it is not at the end of a straight corridor you would bump into by accident.
+- The two brown walls are scarecrows, at (10,1) and (8,10). They block with a bump sound and are not the exit. If a wall dings, skip it.
+- When you step onto the exit tile, you get the YOU ESCAPED! / THE FIELD LETS GO screen, then Press Start to walk it again.
+
+Walkthrough from the start, facing east:
+
+Turn right, step x3, turn left, step x2, turn right, step x2, turn right, step x2, turn left, step x2, turn left, step x2, turn right, step x2, turn left, step x3, turn left, step, turn right, step x4, turn right, step.
+
+That last step is south into (10,10) and triggers the exit screen.
+
+
 ### Screenshots
 
 ![Title screen](screenshots/title.png)

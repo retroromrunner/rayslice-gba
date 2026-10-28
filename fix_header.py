@@ -5,9 +5,9 @@ import sys
 def main(path):
     rom = bytearray(open(path, "rb").read())
     assert len(rom) >= 0xC0, "ROM too small"
-    title = b"RAYSLICE\x00\x00\x00"
+    title = b"RAYCASTER\x00\x00\x00"
     rom[0xA0:0xAC] = title
-    rom[0xAC:0xB0] = b"RAYS"
+    rom[0xAC:0xB0] = b"RAYC"
     rom[0xB0:0xB2] = b"01"
     rom[0xB2] = 0x96
     rom[0xB3] = 0x00

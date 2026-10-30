@@ -1,4 +1,48 @@
-# Area Quest — prototype v4 (for judging the experience, not a finished game)
+# Area Quest — prototype v5 (for judging the experience, not a finished game)
+
+## v5 changes (backward-gate facing fix — CORRECTS the v4 rule)
+
+- **Gates now preserve FACING, not travel direction (Cori's
+  playtest report on v4).** v4 set facing = travel direction on
+  every crossing. That is correct for a forward step (facing =
+  travel, so you arrive with the gate behind you), but wrong
+  for a backward step: walking backwards through a door spun
+  you 180 degrees, so you arrived facing AWAY from the door
+  and had to turn around before you could go back. v5 rule,
+  general for ALL gates (forward and return): arrival cell =
+  destination_gate + travel direction (unchanged from v4, so
+  every arrival cell is still a proven open cell), but facing
+  is UNCHANGED from before the transition. Movement is only
+  forward (travel = facing) or backward (travel = opposite
+  facing), so:
+  - Forward step: you arrive with the gate behind you, and
+    Down (step back) takes you back through it.
+  - Backward step: you arrive still facing the gate from the
+    other side, and Up (step forward) takes you straight
+    back through it.
+  The return button therefore depends on which way you were
+  facing when you crossed — v4's "Down after transition
+  returns" is NOT universal, and this section replaces it.
+  Worked oscillations, all proven in QA with NO turning
+  between crossings (at least 3 crossings each way per
+  pattern): (1) Dungeon (9,10) facing WEST, Down (back east)
+  onto gate (10,10) -> Meadow (2,1) facing WEST (gate (1,1)
+  ahead); Up -> Dungeon (9,10) facing WEST; Down -> Meadow
+  facing WEST; and so on. (2) Dungeon (9,10) facing EAST, Up
+  (forward east) -> Meadow (2,1) facing EAST (gate behind);
+  Down -> Dungeon (9,10) facing EAST (gate ahead); Up ->
+  Meadow facing EAST; and so on. (3) The same two patterns
+  for the Meadow <-> Crypt gates (Meadow (9,9) / Crypt
+  (2,1)). (4) North/south approaches, forward AND backward:
+  e.g. Dungeon gate from (10,9) facing SOUTH, Up -> Meadow
+  (1,2) SOUTH, Down -> Dungeon (10,9) SOUTH (v4 flipped this
+  to NORTH); and the backward version, (10,9) facing NORTH,
+  Down (back south) -> Meadow (1,2) NORTH (gate ahead, no
+  spin), Up -> Dungeon (10,9) NORTH. Nothing else changed
+  in v5: keys, NPC, fog-of-war minimap, inventory, tilesets
+  and sounds are exactly as in v4, and all were
+  regression-checked (full flow to victory, locked-gate
+  negatives, NPC talk, fog early/persist/reset).
 
 ## v4 changes (gate direction fix + Meadow NPC + minimap fog of war)
 

@@ -1,21 +1,32 @@
-/* AREA QUEST v4 - GBC first-person prototype (not a finished game).
- * v4 gate rule (direction-preserving, general): stepping onto a
- * gate cell travelling in direction D loads the destination area
- * with the player on destination_gate + D, FACING D -- continuing
- * away from the gate, never on a gate tile, never facing back
- * toward it. Forward gate -> destination return gate (1,1) + D;
- * return gate -> destination forward gate + D. Worked examples:
- * (2,1) west onto Meadow return (1,1) -> Dungeon (9,10) WEST
- * (gate (10,10) behind); (9,10) east onto Dungeon gate (10,10)
- * -> Meadow (2,1) EAST (gate (1,1) behind). Pressing Down
- * immediately after any transition steps back onto that area's
- * gate and returns, still direction-preserving -- that is the
- * intended back route, not a bounce. Reachable approaches and
+/* AREA QUEST v5 - GBC first-person prototype (not a finished game).
+ * v5 gate rule (facing-preserving, general -- CORRECTS v4):
+ * stepping onto a gate cell travelling in direction D loads the
+ * destination area with the player on destination_gate + D,
+ * FACING UNCHANGED (the facing from before the transition).
+ * v4 set facing = D (travel), which is right for a forward
+ * step (facing == travel) but spins the player 180 degrees
+ * after a backward step (facing == opposite travel): walking
+ * backwards through a door must leave you facing the door
+ * from the other side, so one more step in the facing
+ * direction takes you straight back through it. Forward
+ * gate -> destination return gate (1,1) + D; return gate ->
+ * destination forward gate + D. The player never lands on a
+ * gate tile. After a FORWARD arrival the gate is behind you,
+ * so Down (back) returns through it; after a BACKWARD
+ * arrival the gate is ahead of you, so Up (forward) returns
+ * through it -- the return button depends on which way you
+ * were facing when you crossed. Worked examples: (9,10)
+ * facing WEST, Down (back east) onto Dungeon gate (10,10)
+ * -> Meadow (2,1) facing WEST (gate (1,1) ahead); Up again
+ * -> Dungeon (9,10) facing WEST (gate behind). (9,10)
+ * facing EAST, Up (forward east) onto Dungeon gate -> Meadow
+ * (2,1) facing EAST (gate behind); Down again -> Dungeon
+ * (9,10) facing EAST (gate ahead). Reachable approaches and
  * their open arrivals (verified, see build.sh): Dungeon gate
- * west->(2,1)E, north->(1,2)S in Meadow; Meadow gate west->
- * (2,1)E, north->(1,2)S, south->(1,0)N in Crypt; Meadow return
- * east->(9,10)W, south->(10,9)N in Dungeon; Crypt return east->
- * (9,9)W, south->(10,8)N in Meadow. Unreachable (border) and
+ * west->(2,1), north->(1,2) in Meadow; Meadow gate west->
+ * (2,1), north->(1,2), south->(1,0) in Crypt; Meadow return
+ * east->(9,10), south->(10,9) in Dungeon; Crypt return east->
+ * (9,9), south->(10,8) in Meadow. Unreachable (border) and
  * documented, not bugs: Dungeon gate east/south, Meadow gate
  * east, Meadow return east/north, Crypt return east/north.
  * v4 also adds: one Meadow NPC at (2,7) (walk-through billboard,
@@ -308,15 +319,6 @@ static void clear_visited(void) {
     uint8_t i, j;
     for (i = 0; i < 3; i++)
         for (j = 0; j < 144; j++) visited[i][j] = 0;
-}
-
-/* Angle for a travel step (dx,dy): east 0, south 64, west 128,
- * north 192 -- the same encoding g_ang already uses. */
-static uint8_t angle_from_step(int8_t dx, int8_t dy) {
-    if (dx == 1) return 0;
-    if (dy == 1) return 64;
-    if (dx == -1) return 128;
-    return 192;
 }
 
 static uint8_t key_held(uint8_t area) {
@@ -1027,28 +1029,30 @@ void main(void) {
                     }
                 } else if (cell == 'G') {
                     if (key_held(g_area)) {
-                        /* v4 DIRECTION-PRESERVING seamless
+                        /* v5 FACING-PRESERVING seamless
                          * transition (general rule, all gates):
                          * destination = destination gate + the
-                         * step direction D, facing D -- the
-                         * player continues AWAY from the gate,
-                         * never lands on a gate tile, never
-                         * faces back toward it. Forward gate:
-                         * destination gate is the next area's
-                         * return gate (1,1). E.g. east onto
-                         * (10,10) -> (2,1) east; south onto
-                         * (10,10) -> (1,2) south; north onto
-                         * (10,9) -> (1,0) north (Crypt border
-                         * alcove, opened in v4). The source
-                         * gate tile itself counts as visited
-                         * (stepped onto it) for fog of war. */
+                         * step direction D, facing UNCHANGED.
+                         * Forward gate: destination gate is
+                         * the next area's return gate (1,1).
+                         * E.g. east onto (10,10) -> (2,1)
+                         * facing east (forward step, facing
+                         * == travel, gate behind); west-facing
+                         * Down (back east) onto (10,10) ->
+                         * (2,1) facing WEST (backward step,
+                         * gate ahead). The source gate tile
+                         * itself counts as visited (stepped
+                         * onto it) for fog of war. */
                         int8_t dgx = RET_POS[g_area][0];
                         int8_t dgy = RET_POS[g_area][1];
                         mark_visited(g_area, tx, ty);
                         g_area++;
                         g_ptx = (int8_t)(dgx + dx);
                         g_pty = (int8_t)(dgy + dy);
-                        g_ang = angle_from_step(dx, dy);
+                        /* g_ang deliberately untouched: v5
+                         * preserves facing, it does NOT set
+                         * facing = travel (that was the v4
+                         * backward-step spin bug). */
                         mark_visited(g_area, g_ptx, g_pty);
                         idle_frames = 0;
                         state = ST_PLAY;
@@ -1063,22 +1067,24 @@ void main(void) {
                         }
                     }
                 } else if (cell == 'B') {
-                    /* v4 DIRECTION-PRESERVING seamless backtrack
+                    /* v5 FACING-PRESERVING seamless backtrack
                      * (same general rule as forward gates):
                      * destination = previous area's forward
-                     * gate + the step direction D, facing D.
-                     * Return gates are always open (arrival
-                     * already unlocked that direction), never
-                     * block, never need a key, and render gold
-                     * like any unlocked gate. E.g. west onto
-                     * (1,1) -> (9,10) WEST in the Dungeon
-                     * (gate (10,10) behind, to the east), so
-                     * forward from there moves to (8,10),
-                     * NOT back through the gate -- the v3 bug
-                     * was landing at (9,10) facing EAST, back
-                     * toward the gate, so forward walked
-                     * straight back through it. The source
-                     * return-gate tile counts as visited. */
+                     * gate + the step direction D, facing
+                     * UNCHANGED. Return gates are always open
+                     * (arrival already unlocked that
+                     * direction), never block, never need a
+                     * key, and render gold like any unlocked
+                     * gate. E.g. west-facing Up (forward
+                     * west) onto (1,1) -> (9,10) facing WEST
+                     * in the Dungeon (gate (10,10) behind, to
+                     * the east), so Down (back east) returns
+                     * through it; east-facing Down (back
+                     * west) onto (1,1) -> (9,10) facing EAST
+                     * (gate ahead, to the east), so Up
+                     * (forward east) returns through it.
+                     * The source return-gate tile counts as
+                     * visited. */
                     uint8_t da = (uint8_t)(g_area - 1);
                     int8_t dgx = GATE_POS[da][0];
                     int8_t dgy = GATE_POS[da][1];
@@ -1086,7 +1092,7 @@ void main(void) {
                     g_area = da;
                     g_ptx = (int8_t)(dgx + dx);
                     g_pty = (int8_t)(dgy + dy);
-                    g_ang = angle_from_step(dx, dy);
+                    /* g_ang deliberately untouched (v5). */
                     mark_visited(g_area, g_ptx, g_pty);
                     idle_frames = 0;
                     state = ST_PLAY;

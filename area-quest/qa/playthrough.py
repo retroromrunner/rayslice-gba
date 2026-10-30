@@ -1,4 +1,4 @@
-"""Area Quest PyBoy QA (v4, direction-preserving gates + NPC + fog).
+"""Area Quest PyBoy QA (v5, facing-preserving gates + NPC + fog).
 Tap = button_press + 2 ticks + release + settle (holds, NOT pulses).
 Proof: 'A','Q',state,area,ptx,pty,ang,checksum(state+area+ptx+pty+ang+keys)
 and 'K','Y',bronze,silver,0,0,0xA5,checksum(bronze+silver) in WRAM.
@@ -9,12 +9,14 @@ area 1 meadow (Silver Key (5,5), gate (10,9), return gate (1,1),
 entry (2,1), NPC (2,7)), area 2 crypt (exit (10,10), return
 gate (1,1), entry (2,1); v4 opened (1,2) and (1,0) for
 direction-preserving gate arrivals).
-v4 gate rule: stepping onto a gate travelling in direction D
-lands on destination_gate + D, facing D. Forward gate ->
-next area's return gate (1,1) + D; return gate -> previous
-area's forward gate + D. Both back routes are proven per gate:
-(a) Down step-back from entry, (b) turn 180 + Up forward,
-each followed by forward AWAY from the gate (not back).
+v5 gate rule (CORRECTS v4): stepping onto a gate travelling in
+direction D lands on destination_gate + D, FACING UNCHANGED.
+Forward step (facing == travel): gate ends up behind you, so
+Down (back) returns through it. Backward step (facing ==
+opposite travel): gate ends up ahead of you, so Up (forward)
+returns through it. Oscillation back/forward/back/forward with
+NO turning is proven for both gates, both facing directions,
+plus north/south approaches forward and backward.
 Minimap fog of war (v4): only step-on visited tiles show;
 unvisited cells are dark, persisting across returns, reset
 on a new game. A key tile only becomes visited by stepping
@@ -362,10 +364,12 @@ check_minimap(pb, "minimap area 0", "minimap-area1.png", "select", [
     (5, 1, "wall", "unwalked open cell (5,1) dark (spur only reachable via the key tile, never walked)"),
 ])
 
-# v4 NORTH approach to the Dungeon gate: from (10,9) facing south
-# (D=south) the gate lands on Meadow (1,2) facing SOUTH (gate
-# (1,1) behind, to the north). Forward south must move AWAY
-# (to (1,3)), Down north must return to (10,9) facing NORTH.
+# v5 NORTH approach to the Dungeon gate: from (10,9) facing south
+# (D=south, forward step) the gate lands on Meadow (1,2) facing
+# SOUTH (gate (1,1) behind, to the north). Forward south must
+# move AWAY (to (1,3)). Down (back north) returns to (10,9)
+# facing SOUTH -- facing preserved, NOT flipped to north (v4
+# flipped it). Then Up/Down oscillates with NO turning.
 ok = go(pb, 0, (10, 9), "0", avoid={(5, 3)}) and face(pb, 64)
 p, k = state_of(pb)
 check("gate north approach (10,9) facing south, key held", ok and p and (p[2], p[3]) == (10, 9) and p[4] == 64, f"proof={p}")
@@ -390,25 +394,53 @@ check("step back north to arrival (1,2) south, still Meadow",
 tap(pb, "down")
 tick(pb, 40)
 p, k = state_of(pb)
-check("Down after north-approach transition returns to Dungeon (10,9) NORTH, direction-preserving",
-      p == (1, 0, 10, 9, 192), f"proof={p}")
+check("Down after north-approach transition returns to Dungeon (10,9) SOUTH, facing preserved (v5, NOT north)",
+      p == (1, 0, 10, 9, 64), f"proof={p}")
+# v5 north-approach FORWARD oscillation, no turning: Up/Down/Up.
 tap(pb, "up")
 tick(pb, 40)
 p, k = state_of(pb)
-check("forward after Down-return bumps on Dungeon wall (10,8), NOT back through gate",
-      p == (1, 0, 10, 9, 192), f"proof={p}")
-# Main WEST approach: turn south, step onto the gate again.
-ok = face(pb, 64)
-tap(pb, "up")
-tick(pb, 40)
-p, k = state_of(pb)
-check("gate north approach again -> Meadow (1,2) SOUTH",
-      ok and p == (1, 1, 1, 2, 64), f"proof={p}")
-# Return to Dungeon via Down, then take the west approach for the main flow.
+check("osc north forward: Up from (10,9) south -> Meadow (1,2) SOUTH",
+      p == (1, 1, 1, 2, 64), f"proof={p}")
 tap(pb, "down")
 tick(pb, 40)
 p, k = state_of(pb)
-check("Down from (1,2) south returns to Dungeon (10,9) NORTH",
+check("osc north forward: Down from (1,2) south -> Dungeon (10,9) SOUTH",
+      p == (1, 0, 10, 9, 64), f"proof={p}")
+tap(pb, "up")
+tick(pb, 40)
+p, k = state_of(pb)
+check("osc north forward: Up again -> Meadow (1,2) SOUTH, no turn",
+      p == (1, 1, 1, 2, 64), f"proof={p}")
+# v5 north-approach BACKWARD oscillation: back to Dungeon, face
+# NORTH, then Down (back SOUTH) through the gate must land in
+# Meadow facing NORTH (gate ahead) -- NOT flip to south (v4
+# bug pattern: backward step spun the player 180 degrees).
+tap(pb, "down")
+tick(pb, 40)
+p, k = state_of(pb)
+check("back to Dungeon for backward test -> (10,9) SOUTH",
+      p == (1, 0, 10, 9, 64), f"proof={p}")
+ok = face(pb, 192)
+tap(pb, "down")
+tick(pb, 40)
+p, k = state_of(pb)
+check("osc north BACKWARD: Down (back south) from (10,9) north -> Meadow (1,2) NORTH, gate ahead, NO spin",
+      ok and p == (1, 1, 1, 2, 192), f"proof={p}")
+tap(pb, "up")
+tick(pb, 40)
+p, k = state_of(pb)
+check("osc north backward: Up (forward north) -> Dungeon (10,9) NORTH",
+      p == (1, 0, 10, 9, 192), f"proof={p}")
+tap(pb, "down")
+tick(pb, 40)
+p, k = state_of(pb)
+check("osc north backward: Down again -> Meadow (1,2) NORTH, no turn",
+      p == (1, 1, 1, 2, 192), f"proof={p}")
+tap(pb, "up")
+tick(pb, 40)
+p, k = state_of(pb)
+check("osc north backward: Up again -> Dungeon (10,9) NORTH, no turn",
       p == (1, 0, 10, 9, 192), f"proof={p}")
 ok = go(pb, 0, (9, 10), "0") and face(pb, 0)
 p, k = state_of(pb)
@@ -427,46 +459,67 @@ check("transition frame is the meadow (blue sky on top)",
       count_px(trans, is_blue_sky, (0, 0, 160, 40)) >= 500,
       f"sky_px={count_px(trans, is_blue_sky, (0, 0, 160, 40))}")
 
-# v4 direction-preserving back routes: (a) Down step-back from
-# entry, (b) turn 180 + Up, each landing in Dungeon (9,10)
-# facing WEST (gate (10,10) behind, to the east). Forward west
-# must move AWAY (to (8,10)), NOT back through the gate;
-# forward again requires turning east and stepping on the gate.
-tap(pb, "down")
-tick(pb, 40)
-p, k = state_of(pb)
-check("BACK route (a) Down from entry -> Dungeon (9,10) WEST, seamless, keys kept",
-      p == (1, 0, 9, 10, 128) and k == (1, 0), f"proof={p} keys={k}")
-shot(pb, "return-down-2.png")
-tap(pb, "up")
-tick(pb, 40)
-p, k = state_of(pb)
-check("forward after Down-return bumps on Dungeon wall (8,10), NOT back to Meadow",
-      p == (1, 0, 9, 10, 128) and k == (1, 0), f"proof={p} keys={k}")
-ok = face(pb, 0)
-tap(pb, "up")
-tick(pb, 40)
-p, k = state_of(pb)
-check("forward again after Down-return (turn east, step on gate) -> Meadow (2,1) east",
-      ok and p == (1, 1, 2, 1, 0) and k == (1, 0), f"proof={p} keys={k}")
+# v5 gate-1 oscillations (the reported bug, fixed): BACKWARD
+# pattern first. Turn 180 at the entry, Up (forward west) onto
+# the return gate -> Dungeon (9,10) WEST. Then Down (back east)
+# onto the Dungeon gate -> Meadow (2,1) WEST: facing preserved,
+# gate (1,1) ahead, so Up goes straight back. No turning at
+# any point of the oscillation.
 ok = face(pb, 128)
 tap(pb, "up")
 tick(pb, 40)
 p, k = state_of(pb)
-check("BACK route (b) turn 180 + Up from entry -> Dungeon (9,10) WEST, seamless, keys kept",
+check("BACK route turn 180 + Up from entry -> Dungeon (9,10) WEST, seamless, keys kept",
       ok and p == (1, 0, 9, 10, 128) and k == (1, 0), f"proof={p} keys={k}")
 shot(pb, "return-turn-2.png")
+tap(pb, "down")
+tick(pb, 40)
+p, k = state_of(pb)
+check("osc gate1 BACKWARD: Down (back east) from (9,10) west -> Meadow (2,1) WEST, gate ahead, NO spin",
+      p == (1, 1, 2, 1, 128) and k == (1, 0), f"proof={p} keys={k}")
+shot(pb, "osc-back-1.png")
 tap(pb, "up")
 tick(pb, 40)
 p, k = state_of(pb)
-check("forward after turn-return bumps on Dungeon wall (8,10), NOT back to Meadow",
+check("osc gate1 backward: Up (forward west) -> Dungeon (9,10) WEST, no turn",
       p == (1, 0, 9, 10, 128) and k == (1, 0), f"proof={p} keys={k}")
+tap(pb, "down")
+tick(pb, 40)
+p, k = state_of(pb)
+check("osc gate1 backward: Down again -> Meadow (2,1) WEST, no turn",
+      p == (1, 1, 2, 1, 128) and k == (1, 0), f"proof={p} keys={k}")
+tap(pb, "up")
+tick(pb, 40)
+p, k = state_of(pb)
+check("osc gate1 backward: Up again -> Dungeon (9,10) WEST, no turn",
+      p == (1, 0, 9, 10, 128) and k == (1, 0), f"proof={p} keys={k}")
+# v5 gate-1 FORWARD oscillation: face east, Up/Down/Up/Down/Up.
 ok = face(pb, 0)
 tap(pb, "up")
 tick(pb, 40)
 p, k = state_of(pb)
-check("forward again after turn-return (turn east, step on gate) -> Meadow (2,1) east",
+check("osc gate1 FORWARD: Up (forward east) from (9,10) east -> Meadow (2,1) EAST, gate behind",
       ok and p == (1, 1, 2, 1, 0) and k == (1, 0), f"proof={p} keys={k}")
+tap(pb, "down")
+tick(pb, 40)
+p, k = state_of(pb)
+check("osc gate1 forward: Down (back west) -> Dungeon (9,10) EAST, gate ahead",
+      p == (1, 0, 9, 10, 0) and k == (1, 0), f"proof={p} keys={k}")
+tap(pb, "up")
+tick(pb, 40)
+p, k = state_of(pb)
+check("osc gate1 forward: Up again -> Meadow (2,1) EAST, no turn",
+      p == (1, 1, 2, 1, 0) and k == (1, 0), f"proof={p} keys={k}")
+tap(pb, "down")
+tick(pb, 40)
+p, k = state_of(pb)
+check("osc gate1 forward: Down again -> Dungeon (9,10) EAST, no turn",
+      p == (1, 0, 9, 10, 0) and k == (1, 0), f"proof={p} keys={k}")
+tap(pb, "up")
+tick(pb, 40)
+p, k = state_of(pb)
+check("osc gate1 forward: Up again -> Meadow (2,1) EAST, no turn",
+      p == (1, 1, 2, 1, 0) and k == (1, 0), f"proof={p} keys={k}")
 ok = face(pb, 128)
 p, k = state_of(pb)
 check("face west from entry (return gate ahead)", ok and p and p[4] == 128, f"proof={p}")
@@ -630,13 +683,30 @@ check("step back north to arrival (1,2) south, still Crypt",
 tap(pb, "down")
 tick(pb, 40)
 p, k = state_of(pb)
-check("Down after Meadow-gate north approach returns to Meadow (10,8) NORTH",
-      p == (1, 1, 10, 8, 192), f"proof={p}")
+check("Down after Meadow-gate north approach returns to Meadow (10,8) SOUTH, facing preserved (v5, NOT north)",
+      p == (1, 1, 10, 8, 64), f"proof={p}")
+# v5 north-approach oscillation, no turning: Up/Down/Up.
 tap(pb, "up")
 tick(pb, 40)
 p, k = state_of(pb)
-check("forward after Down-return moves AWAY north to (10,7), NOT back to Crypt",
-      p == (1, 1, 10, 7, 192), f"proof={p}")
+check("osc gate2 north: Up from (10,8) south -> Crypt (1,2) SOUTH",
+      p == (1, 2, 1, 2, 64), f"proof={p}")
+tap(pb, "down")
+tick(pb, 40)
+p, k = state_of(pb)
+check("osc gate2 north: Down -> Meadow (10,8) SOUTH",
+      p == (1, 1, 10, 8, 64), f"proof={p}")
+tap(pb, "up")
+tick(pb, 40)
+p, k = state_of(pb)
+check("osc gate2 north: Up again -> Crypt (1,2) SOUTH, no turn",
+      p == (1, 2, 1, 2, 64), f"proof={p}")
+# Back to Meadow for the main west approach.
+tap(pb, "down")
+tick(pb, 40)
+p, k = state_of(pb)
+check("back to Meadow for west approach -> (10,8) SOUTH",
+      p == (1, 1, 10, 8, 64), f"proof={p}")
 # Main west approach to the Crypt.
 ok = go(pb, 1, (9, 9), "0") and face(pb, 0)
 p, k = state_of(pb)
@@ -680,51 +750,69 @@ check_minimap(pb, "minimap area 2", "minimap-area3.png", "select", [
     (1, 2, "open", "visited arrival cell (1,2) light (north-approach landing)"),
     (1, 3, "open", "visited cell (1,3) light (forward after north approach)"),
 ])
+# v5 gate-2 FORWARD oscillation: Down (back west) from Crypt
+# entry (2,1) EAST -> Meadow (9,9) EAST (gate ahead), then
+# Up/Down/Up with NO turning.
 tap(pb, "down")
 tick(pb, 40)
 p, k = state_of(pb)
-check("BACK route (a) Down from entry -> Meadow (9,9) WEST, seamless, keys kept",
-      p == (1, 1, 9, 9, 128) and k == (1, 1), f"proof={p} keys={k}")
+check("osc gate2 FORWARD: Down (back west) from entry east -> Meadow (9,9) EAST, gate ahead, NO spin",
+      p == (1, 1, 9, 9, 0) and k == (1, 1), f"proof={p} keys={k}")
 shot(pb, "return-down-3.png")
 tap(pb, "up")
 tick(pb, 40)
 p, k = state_of(pb)
-check("forward after Down-return moves AWAY west to (8,9), NOT back to Crypt",
-      p == (1, 1, 8, 9, 128) and k == (1, 1), f"proof={p} keys={k}")
-ok = face(pb, 0)
-tap(pb, "up")
-tick(pb, 40)
-p, k = state_of(pb)
-check("step east back to (9,9) after Down-return",
-      ok and p == (1, 1, 9, 9, 0) and k == (1, 1), f"proof={p} keys={k}")
-tap(pb, "up")
-tick(pb, 40)
-p, k = state_of(pb)
-check("forward again after Down-return (turn east, step on gate) -> Crypt (2,1) east",
+check("osc gate2 forward: Up (forward east) -> Crypt (2,1) EAST, no turn",
       p == (1, 2, 2, 1, 0) and k == (1, 1), f"proof={p} keys={k}")
+tap(pb, "down")
+tick(pb, 40)
+p, k = state_of(pb)
+check("osc gate2 forward: Down again -> Meadow (9,9) EAST, no turn",
+      p == (1, 1, 9, 9, 0) and k == (1, 1), f"proof={p} keys={k}")
+tap(pb, "up")
+tick(pb, 40)
+p, k = state_of(pb)
+check("osc gate2 forward: Up again -> Crypt (2,1) EAST, no turn",
+      p == (1, 2, 2, 1, 0) and k == (1, 1), f"proof={p} keys={k}")
+# v5 gate-2 BACKWARD oscillation: turn 180 at the entry, Up
+# (forward west) onto the return gate -> Meadow (9,9) WEST,
+# then Down (back east) -> Crypt (2,1) WEST, gate ahead, and
+# Up/Down with NO turning.
 ok = face(pb, 128)
 tap(pb, "up")
 tick(pb, 40)
 p, k = state_of(pb)
-check("BACK route (b) turn 180 + Up from entry -> Meadow (9,9) WEST, seamless, keys kept",
+check("BACK route turn 180 + Up from entry -> Meadow (9,9) WEST, seamless, keys kept",
       ok and p == (1, 1, 9, 9, 128) and k == (1, 1), f"proof={p} keys={k}")
 shot(pb, "return-turn-3.png")
+tap(pb, "down")
+tick(pb, 40)
+p, k = state_of(pb)
+check("osc gate2 BACKWARD: Down (back east) from (9,9) west -> Crypt (2,1) WEST, gate ahead, NO spin",
+      p == (1, 2, 2, 1, 128) and k == (1, 1), f"proof={p} keys={k}")
+shot(pb, "osc-back-3.png")
 tap(pb, "up")
 tick(pb, 40)
 p, k = state_of(pb)
-check("forward after turn-return moves AWAY west to (8,9), NOT back to Crypt",
-      p == (1, 1, 8, 9, 128) and k == (1, 1), f"proof={p} keys={k}")
+check("osc gate2 backward: Up (forward west) -> Meadow (9,9) WEST, no turn",
+      p == (1, 1, 9, 9, 128) and k == (1, 1), f"proof={p} keys={k}")
+tap(pb, "down")
+tick(pb, 40)
+p, k = state_of(pb)
+check("osc gate2 backward: Down again -> Crypt (2,1) WEST, no turn",
+      p == (1, 2, 2, 1, 128) and k == (1, 1), f"proof={p} keys={k}")
+tap(pb, "up")
+tick(pb, 40)
+p, k = state_of(pb)
+check("osc gate2 backward: Up again -> Meadow (9,9) WEST, no turn",
+      p == (1, 1, 9, 9, 128) and k == (1, 1), f"proof={p} keys={k}")
+# Re-enter Crypt via the west approach for the south-approach tests.
 ok = face(pb, 0)
 tap(pb, "up")
 tick(pb, 40)
 p, k = state_of(pb)
-check("step east back to (9,9) after turn-return",
-      ok and p == (1, 1, 9, 9, 0) and k == (1, 1), f"proof={p} keys={k}")
-tap(pb, "up")
-tick(pb, 40)
-p, k = state_of(pb)
-check("forward again after turn-return (turn east, step on gate) -> Crypt (2,1) east",
-      p == (1, 2, 2, 1, 0) and k == (1, 1), f"proof={p} keys={k}")
+check("re-enter Crypt via west approach -> (2,1) east",
+      ok and p == (1, 2, 2, 1, 0) and k == (1, 1), f"proof={p} keys={k}")
 # v4 Crypt return SOUTH approach: from (1,2) facing north, step
 # onto (1,1) -> Meadow (10,8) NORTH (gate (10,9) behind, south).
 ok = go(pb, 2, (1, 2), "0") and face(pb, 192)
@@ -758,8 +846,20 @@ check("forward after south-approach transition bumps out of bounds, NOT back thr
 tap(pb, "down")
 tick(pb, 40)
 p, k = state_of(pb)
-check("Down after south-approach transition returns to Meadow (10,10) SOUTH",
-      p == (1, 1, 10, 10, 64), f"proof={p} keys={k}")
+check("Down after south-approach transition returns to Meadow (10,10) NORTH, facing preserved (v5, NOT south)",
+      p == (1, 1, 10, 10, 192), f"proof={p} keys={k}")
+# v5 south-approach oscillation, no turning: Up (forward north)
+# through the gate, Down (back south) through it again.
+tap(pb, "up")
+tick(pb, 40)
+p, k = state_of(pb)
+check("osc gate2 south: Up from (10,10) north -> Crypt (1,0) NORTH",
+      p == (1, 2, 1, 0, 192), f"proof={p} keys={k}")
+tap(pb, "down")
+tick(pb, 40)
+p, k = state_of(pb)
+check("osc gate2 south: Down again -> Meadow (10,10) NORTH, no turn",
+      p == (1, 1, 10, 10, 192), f"proof={p} keys={k}")
 # Re-enter Crypt via the west approach for the back chain.
 ok = go(pb, 1, (9, 9), "0") and face(pb, 0)
 tap(pb, "up")
@@ -778,8 +878,8 @@ face(pb, 0)
 tap(pb, "down")
 tick(pb, 40)
 p, k = state_of(pb)
-check("BACK: Area 2 return (Down) -> Meadow (9,9) WEST, for the Area 0 leg",
-      p == (1, 1, 9, 9, 128) and k == (1, 1), f"proof={p} keys={k}")
+check("BACK: Area 2 return (Down) -> Meadow (9,9) EAST, for the Area 0 leg",
+      p == (1, 1, 9, 9, 0) and k == (1, 1), f"proof={p} keys={k}")
 shot(pb, "return-area2.png")
 # Explicit east approach (not go_return: BFS to (1,1) may pick
 # the (1,2) south approach instead, landing at (10,9) north).
